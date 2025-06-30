@@ -4,11 +4,11 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # Load data
-file_path = r"C:\Users\Raabiyaal Ishaq\OneDrive - The University of Chicago\Desktop\2. RA-SHIP\SUMMER PROJECTS\ACLI\For BI\All Prop Type.xlsx"
+file_path = r"All Prop Type.xlsx"
 df = pd.read_excel(file_path, header=1)
 
 # Load recession data
-recession_file_path = r"C:\Users\Raabiyaal Ishaq\OneDrive - The University of Chicago\Desktop\2. RA-SHIP\SUMMER PROJECTS\ACLI\For BI\Recession Data.xlsx"  # update path
+recession_file_path = r"Recession Data.xlsx"  # update path
 
 recession_df = pd.read_excel(recession_file_path, header=1)
 recession_df['observation_date'] = pd.to_datetime(recession_df['observation_date'])
@@ -17,7 +17,7 @@ recession_df['observation_date'] = pd.to_datetime(recession_df['observation_date
 
 
 
-rf_file_path = r"C:\Users\Raabiyaal Ishaq\OneDrive - The University of Chicago\Desktop\2. RA-SHIP\SUMMER PROJECTS\ACLI\For BI\Rf.xlsx"  # Update this
+rf_file_path = r"Rf.xlsx"  # Update this
 
 rf_df = pd.read_excel(rf_file_path, header=1)  # Header is in second row (index 1)
 rf_df['Quarter'] = pd.to_datetime(rf_df['Quarter'])
