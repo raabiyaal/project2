@@ -265,5 +265,7 @@ def update_graph(selected_properties, selected_ltvs, additional_lines):
     return fig
 
 if __name__ == '__main__':
-    app.run(debug=True, port=8051)
+    import os
+    port = int(os.environ.get("PORT", 8050))  # Get port from environment
+    app.run(host='0.0.0.0', port=port, debug=True)
 
