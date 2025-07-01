@@ -113,11 +113,16 @@ app.layout = html.Div([
 
     html.Label("Select LTV Levels:"),
     dcc.Checklist(
-        id='ltv-checklist',
-        options=[{'label': ltv, 'value': ltv} for ltv in ['LTV: 25%', 'LTV: 50%', 'LTV: 75%']],
-        value=['LTV: 25%', 'LTV: 50%', 'LTV: 75%'],
+        id='additional-lines-checklist',
+        options=[
+            {'label': 'Gamma (γ)', 'value': 'gamma'},
+            {'label': 'Risk-Free Rate (Rf)', 'value': 'rf'},
+            {'label': 'Loan Volume', 'value': 'loan'}
+        ],
+        value=['gamma', 'rf', 'loan'],  # default all three checked
         inline=True
     ),
+
 
     html.Br(),
 
@@ -190,6 +195,8 @@ def update_graph(selected_properties, selected_ltvs, additional_lines):
             ), secondary_y=False)
 
         # Add Loan Volume (always shown)
+# Add Loan Volume if selected
+    if 'loan' in additional_lines:
         loan_df = df[df['Property Type'] == prop_type]
         loan_color = get_loan_color(prop_type)
         fig.add_trace(go.Scatter(
@@ -200,6 +207,7 @@ def update_graph(selected_properties, selected_ltvs, additional_lines):
             line=dict(color=loan_color, width=2),
             hovertemplate='$%{y:.2f}B<br>%{fullData.name}<extra></extra>'
         ), secondary_y=True)
+
 
     # Add Rf (risk-free rate) only once if selected
     if 'rf' in additional_lines:
@@ -255,7 +263,7 @@ def update_graph(selected_properties, selected_ltvs, additional_lines):
 )
 
     fig.update_yaxes(
-        title_text='Quarterly Loan Volume (Commitments) in USD',
+        title_text='Quarterly Loan Volume (Commitments) in USD Billions',
         secondary_y=True
     )
 
@@ -267,5 +275,5 @@ def update_graph(selected_properties, selected_ltvs, additional_lines):
 if __name__ == '__main__':
     import os
     port = int(os.environ.get("PORT", 8050))  # Get port from environment
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=port, debug=False)
 
