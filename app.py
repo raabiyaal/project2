@@ -4,26 +4,20 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # Load data
-file_path = r"All Prop Type.xlsx"
+file_path = r"C:\Users\Raabiyaal Ishaq\OneDrive - The University of Chicago\Desktop\2. RA-SHIP\SUMMER PROJECTS\ACLI\Python\dash-app\All Prop Type.xlsx"
 df = pd.read_excel(file_path, header=1)
 
 # Load recession data
-recession_file_path = r"Recession Data.xlsx"  # update path
-
+recession_file_path = r"C:\Users\Raabiyaal Ishaq\OneDrive - The University of Chicago\Desktop\2. RA-SHIP\SUMMER PROJECTS\ACLI\Python\dash-app\Recession Data.xlsx"
 recession_df = pd.read_excel(recession_file_path, header=1)
 recession_df['observation_date'] = pd.to_datetime(recession_df['observation_date'])
 
-
-
-
-
-rf_file_path = r"Rf.xlsx"  # Update this
-
-rf_df = pd.read_excel(rf_file_path, header=1)  # Header is in second row (index 1)
+# Load risk-free rate and structural differences data
+rf_file_path = r"C:\Users\Raabiyaal Ishaq\OneDrive - The University of Chicago\Desktop\2. RA-SHIP\SUMMER PROJECTS\ACLI\Python\dash-app\Rf.xlsx"
+rf_df = pd.read_excel(rf_file_path, header=1)
 rf_df['Quarter'] = pd.to_datetime(rf_df['Quarter'])
-
 rf_df['Rf'] = rf_df['Rf'].astype(str).str.replace('%', '').astype(float)
-
+rf_df['Structural Differences'] = rf_df['Structural Differences'].astype(str).str.replace('%', '').astype(float)
 
 # Clean data
 if 'Unnamed: 0' in df.columns:
@@ -31,7 +25,6 @@ if 'Unnamed: 0' in df.columns:
 
 df['Quarter'] = pd.to_datetime(df['Quarter'])
 
-# Keep as percent values (no division by 100)
 for col in ['Rf', 'g', 'LTV: 25%', 'LTV: 50%', 'LTV: 75%']:
     df[col] = df[col].astype(str).str.replace('%', '').astype(float)
 
@@ -98,7 +91,7 @@ def get_loan_color(prop_type):
 app = Dash(__name__)
 
 app.layout = html.Div([
-    html.H2("Interactive Property Type & LTV Interest Rates"),
+    # html.H2("  "),
 
     html.Label("Select Property Type(s):"),
     dcc.Dropdown(
@@ -113,16 +106,15 @@ app.layout = html.Div([
 
     html.Label("Select LTV Levels:"),
     dcc.Checklist(
-        id='additional-lines-checklist',
+        id='ltv-checklist',
         options=[
-            {'label': 'Gamma (γ)', 'value': 'gamma'},
-            {'label': 'Risk-Free Rate (Rf)', 'value': 'rf'},
-            {'label': 'Loan Volume', 'value': 'loan'}
+            {'label': 'LTV: 25%', 'value': 'LTV: 25%'},
+            {'label': 'LTV: 50%', 'value': 'LTV: 50%'},
+            {'label': 'LTV: 75%', 'value': 'LTV: 75%'}
         ],
-        value=['gamma', 'rf', 'loan'],  # default all three checked
+        value=['LTV: 25%', 'LTV: 50%', 'LTV: 75%'],
         inline=True
     ),
-
 
     html.Br(),
 
@@ -130,10 +122,11 @@ app.layout = html.Div([
     dcc.Checklist(
         id='additional-lines-checklist',
         options=[
-            {'label': 'Gamma (γ)', 'value': 'gamma'},
-            {'label': 'Risk-Free Rate (Rf)', 'value': 'rf'}
+            {'label': 'Structural Differences', 'value': 'structural_diff'},
+            {'label': 'Risk-Free Rate (Rf)', 'value': 'rf'},
+            {'label': 'Loan Volume', 'value': 'loan'}
         ],
-        value=['gamma', 'rf'],  # default both checked; adjust if needed
+        value=['structural_diff', 'rf', 'loan'],
         inline=True
     ),
 
@@ -147,20 +140,16 @@ app.layout = html.Div([
     )
 ])
 
-
-
-
-
 @app.callback(
     Output('interest-loan-graph', 'figure'),
     Input('property-type-dropdown', 'value'),
     Input('ltv-checklist', 'value'),
-    Input('additional-lines-checklist', 'value')  # NEW INPUT
+    Input('additional-lines-checklist', 'value')
 )
 def update_graph(selected_properties, selected_ltvs, additional_lines):
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    if not selected_properties:
+    if not selected_properties or not selected_ltvs:
         return go.Figure()
 
     for prop_type in selected_properties:
@@ -181,35 +170,33 @@ def update_graph(selected_properties, selected_ltvs, additional_lines):
                 hovertemplate='%{y:.2%} %{fullData.name}<extra></extra>'
             ), secondary_y=False)
 
-        # Add Gamma if selected
-        if 'gamma' in additional_lines:
-            g_df = df[df['Property Type'] == prop_type]
-            gamma_color = darken_color(base_colors.get(prop_type, '100,100,100'), amount=0.7)
-            fig.add_trace(go.Scatter(
-                x=g_df['Quarter'],
-                y=g_df['g'],
-                mode='lines',
-                name=f"{prop_type} \u03B3",
-                line=dict(color=gamma_color, dash='dash'),
-                hovertemplate='%{y:.2%} %{fullData.name}<extra></extra>'
-            ), secondary_y=False)
-
-        # Add Loan Volume (always shown)
-# Add Loan Volume if selected
-    if 'loan' in additional_lines:
-        loan_df = df[df['Property Type'] == prop_type]
-        loan_color = get_loan_color(prop_type)
+        # Add Structural Differences if selected
+    if 'structural_diff' in additional_lines:
         fig.add_trace(go.Scatter(
-            x=loan_df['Quarter'],
-            y=[val / 1e9 for val in loan_df['Loan Committed']],
+            x=rf_df['Quarter'],
+            y=rf_df['Structural Differences'],
             mode='lines',
-            name=f'{prop_type} Loan Volume',
-            line=dict(color=loan_color, width=2),
-            hovertemplate='$%{y:.2f}B<br>%{fullData.name}<extra></extra>'
-        ), secondary_y=True)
+            name="Structural Differences",
+            line=dict(color='purple', dash='dash'),
+            hovertemplate='%{y:.2%} Structural Differences<extra></extra>'
+        ), secondary_y=False)
 
+        # Add Loan Volume if selected
+    if 'loan' in additional_lines:
+        loan_df = df[df['Property Type'].isin(selected_properties)]
+        for prop_type in selected_properties:
+            loan_sub_df = loan_df[loan_df['Property Type'] == prop_type]
+            loan_color = get_loan_color(prop_type)
+            fig.add_trace(go.Scatter(
+                x=loan_sub_df['Quarter'],
+                y=[val / 1e9 for val in loan_sub_df['Loan Committed']],
+                mode='lines',
+                name=f'{prop_type} Loan Volume',
+                line=dict(color=loan_color, width=2),
+                hovertemplate='$%{y:.2f}B<br>%{fullData.name}<extra></extra>'
+            ), secondary_y=True)
 
-    # Add Rf (risk-free rate) only once if selected
+    # Add Risk-Free Rate if selected (once)
     if 'rf' in additional_lines:
         fig.add_trace(go.Scatter(
             x=rf_df['Quarter'],
@@ -222,7 +209,6 @@ def update_graph(selected_properties, selected_ltvs, additional_lines):
 
     # Add thick vertical lines for each recession quarter
     recession_quarters = recession_df[recession_df['USREC'] == 1]['observation_date']
-
     for rec_qtr in recession_quarters:
         fig.add_shape(
             type="line",
@@ -231,15 +217,12 @@ def update_graph(selected_properties, selected_ltvs, additional_lines):
             xref='x',
             yref='paper',
             line=dict(
-                color='rgba(128,128,128,0.6)',  # pink
+                color='rgba(128,128,128,0.6)',
                 width=6,
-                dash='solid'  # solid line
+                dash='solid'
             ),
             layer='below'
         )
-
-
-
 
     fig.update_layout(
         title="Quarterly Estimates of Annual Interest Rates at Various Leverage Ratios for the Years 1996 through 1Q 2025",
@@ -248,32 +231,25 @@ def update_graph(selected_properties, selected_ltvs, additional_lines):
         template='plotly_white',
         hovermode='x unified',
         height=600,
-        xaxis=dict(showgrid=False),  # Remove vertical gridlines
-        yaxis=dict(showgrid=False),  # Remove horizontal gridlines (primary y-axis)
+        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=False),
         yaxis2=dict(showgrid=False),
     )
 
     fig.update_yaxes(
-    title_text='Estimated Annual Interest Rate Expense',
-    tickformat='.0%',
-    secondary_y=False,
-    
-    
-   
-)
+        title_text='Estimated Annual Interest Rate Expense',
+        tickformat='.0%',
+        secondary_y=False
+    )
 
     fig.update_yaxes(
         title_text='Quarterly Loan Volume (Commitments) in USD Billions',
         secondary_y=True
     )
 
-
-
-
     return fig
 
 if __name__ == '__main__':
     import os
-    port = int(os.environ.get("PORT", 8050))  # Get port from environment
+    port = int(os.environ.get("PORT", 8050))  # Get port from environment variable, fallback 8050
     app.run(host='0.0.0.0', port=port, debug=False)
-
