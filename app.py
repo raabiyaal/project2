@@ -4,252 +4,211 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 # Load data
-file_path = r"All Prop Type.xlsx"
-df = pd.read_excel(file_path, header=1)
-
-# Load recession data
-recession_file_path = r"Recession Data.xlsx"
-recession_df = pd.read_excel(recession_file_path, header=1)
+interest_df = pd.read_excel("All Prop Type.xlsx", header=1)
+recession_df = pd.read_excel("Recession Data.xlsx", header=1)
 recession_df['observation_date'] = pd.to_datetime(recession_df['observation_date'])
-
-# Load risk-free rate and structural differences data
-rf_file_path = r"Rf.xlsx"
-rf_df = pd.read_excel(rf_file_path, header=1)
+rf_df = pd.read_excel("Rf.xlsx", header=1)
 rf_df['Quarter'] = pd.to_datetime(rf_df['Quarter'])
 rf_df['Rf'] = rf_df['Rf'].astype(str).str.replace('%', '').astype(float)
-rf_df['Structural Differences'] = rf_df['Structural Differences'].astype(str).str.replace('%', '').astype(float)
 
-# Clean data
-if 'Unnamed: 0' in df.columns:
-    df = df.drop(columns=['Unnamed: 0'])
+# Load returns data
+def clean_percent(x):
+    if isinstance(x, str):
+        return float(x.replace('%', '')) if '%' in x else float(x)
+    return x
 
-df['Quarter'] = pd.to_datetime(df['Quarter'])
+returns_df = pd.read_excel("NCREIF.xlsx", header=0)
+for col in returns_df.columns[:7]:  # includes Returns + leading/lagging
+    returns_df[col] = pd.to_datetime(returns_df[col])
+for col in returns_df.columns[7:]:
+    returns_df[col] = returns_df[col].apply(clean_percent)
 
+# Process interest data
+if 'Unnamed: 0' in interest_df.columns:
+    interest_df.drop(columns=['Unnamed: 0'], inplace=True)
+interest_df['Quarter'] = pd.to_datetime(interest_df['Quarter'])
 for col in ['Rf', 'g', 'LTV: 25%', 'LTV: 50%', 'LTV: 75%']:
-    df[col] = df[col].astype(str).str.replace('%', '').astype(float)
+    interest_df[col] = interest_df[col].astype(str).str.replace('%', '').astype(float)
+interest_df['Loan Committed'] = interest_df['Loan Committed'].astype(str).str.replace(',', '').astype(float).astype(int)
 
-df['Loan Committed'] = df['Loan Committed'].astype(str).str.replace(',', '').astype(float).astype(int)
+melted = interest_df.melt(
+    id_vars=['Property Type', 'Quarter', 'Loan Committed'],
+    value_vars=['LTV: 25%', 'LTV: 50%', 'LTV: 75%'],
+    var_name='LTV', value_name='Interest Rate')
 
-# Melt LTV columns for plotting
-melted = df.melt(id_vars=['Property Type', 'Quarter', 'Loan Committed'],
-                 value_vars=['LTV: 25%', 'LTV: 50%', 'LTV: 75%'],
-                 var_name='LTV', value_name='Interest Rate')
-
-# Base RGB colors for each property type
+# Colors
 base_colors = {
-    'Industrial': '255, 165, 0',
-    'Office': '70, 130, 180',
-    'Retail': '255, 105, 180',
-    'Apartment': '60, 179, 113',
-    'Core': '255, 215, 0'
+    'LTV: 75%': '#3222CE',
+    'LTV: 50%': '#7030A0',
+    'LTV: 25%': '#00B050'
 }
 
-# Fill colors with opacity
-fill_colors = {
-    'Apartment': {
-        'LTV: 25%': 'rgba(60,179,113,0.5)',
-        'LTV: 50%': 'rgba(60,179,113,0.3)',
-        'LTV: 75%': 'rgba(60,179,113,0.15)'
-    },
-    'Core': {
-        'LTV: 25%': 'rgba(255,215,0,0.5)',
-        'LTV: 50%': 'rgba(255,215,0,0.3)',
-        'LTV: 75%': 'rgba(255,215,0,0.15)'
-    },
-    'Industrial': {
-        'LTV: 25%': 'rgba(255,165,0,0.5)',
-        'LTV: 50%': 'rgba(255,165,0,0.3)',
-        'LTV: 75%': 'rgba(255,165,0,0.15)'
-    },
-    'Office': {
-        'LTV: 25%': 'rgba(70,130,180,0.5)',
-        'LTV: 50%': 'rgba(70,130,180,0.3)',
-        'LTV: 75%': 'rgba(70,130,180,0.15)'
-    },
-    'Retail': {
-        'LTV: 25%': 'rgba(255,105,180,0.5)',
-        'LTV: 50%': 'rgba(255,105,180,0.3)',
-        'LTV: 75%': 'rgba(255,105,180,0.15)'
-    }
-}
+gamma_color = '#C9C9C9'
+rf_color = '#A6A6A6'
 
-def get_line_color(prop_type):
-    rgb = base_colors.get(prop_type, '100,100,100')
-    return f'rgba({rgb},1)'
+def darken_color(hex_color, amt=0.5):
+    # Convert hex to RGB tuple
+    hex_color = hex_color.lstrip('#')
+    r, g, b = int(hex_color[0:2],16), int(hex_color[2:4],16), int(hex_color[4:6],16)
+    r = int(r * amt)
+    g = int(g * amt)
+    b = int(b * amt)
+    return f'rgb({r},{g},{b})'
 
-def darken_color(rgb_str, amount=0.5):
-    r, g, b = [int(x.strip()) for x in rgb_str.split(',')]
-    r_d = max(0, int(r * amount))
-    g_d = max(0, int(g * amount))
-    b_d = max(0, int(b * amount))
-    return f'rgba({r_d},{g_d},{b_d},1)'
-
-def get_loan_color(prop_type):
-    rgb = base_colors.get(prop_type, '100,100,100')
-    return darken_color(rgb, amount=0.5)
+leading_lagging_options = [
+    {"label": "None", "value": "None"},
+    {"label": "Returns", "value": "Returns"},
+    {"label": "Leading (1year)", "value": "Leading (1year)"},
+    {"label": "Leading (3years)", "value": "Leading (3years)"},
+    {"label": "Leading (5years)", "value": "Leading (5years)"},
+    {"label": "Lagging (1year)", "value": "Lagging (1year)"},
+    {"label": "Lagging (3years)", "value": "Lagging (3years)"},
+    {"label": "Lagging (5years)", "value": "Lagging (5years)"}
+]
 
 app = Dash(__name__)
 
 app.layout = html.Div([
-    # html.H2("  "),
 
-    html.Label("Select Property Type(s):"),
-    dcc.Dropdown(
-        id='property-type-dropdown',
-        options=[{'label': pt, 'value': pt} for pt in df['Property Type'].unique()],
-        value=['Apartment'],
-        multi=True,
-        clearable=False,
-    ),
+    html.Label("Select LTVs:"),
+    dcc.Checklist(id='ltv-checklist', inline=True,
+        options=[{'label': l, 'value': l} for l in ['LTV: 25%', 'LTV: 50%', 'LTV: 75%']],
+        value=['LTV: 25%', 'LTV: 50%', 'LTV: 75%']),
 
-    html.Br(),
-
-    html.Label("Select LTV Levels:"),
-    dcc.Checklist(
-        id='ltv-checklist',
+    html.Label("Select Add-ons:"),
+    dcc.Checklist(id='addon-checklist', inline=True,
         options=[
-            {'label': 'LTV: 25%', 'value': 'LTV: 25%'},
-            {'label': 'LTV: 50%', 'value': 'LTV: 50%'},
-            {'label': 'LTV: 75%', 'value': 'LTV: 75%'}
-        ],
-        value=['LTV: 25%', 'LTV: 50%', 'LTV: 75%'],
-        inline=True
-    ),
-
-    html.Br(),
-
-    html.Label("Select Additional Lines:"),
-    dcc.Checklist(
-        id='additional-lines-checklist',
-        options=[
-            {'label': 'Structural Differences', 'value': 'structural_diff'},
-            {'label': 'Risk-Free Rate (Rf)', 'value': 'rf'},
+            {'label': 'Structural Differences', 'value': 'gamma'},
+            {'label': 'Risk-Free Rate', 'value': 'rf'},
             {'label': 'Loan Volume', 'value': 'loan'}
-        ],
-        value=['structural_diff', 'rf', 'loan'],
+        ], value=['gamma', 'rf', 'loan']),
+
+    html.Label("Select NCREIF Return Series to Overlay:"),
+    dcc.RadioItems(
+        id='return-series-radio',
+        options=leading_lagging_options,
+        value="None",
         inline=True
     ),
 
-    dcc.Graph(
-        id='interest-loan-graph',
-        style={
-            'border': '1px solid lightgray',
-            'padding': '10px',
-            'borderRadius': '8px'
-        }
-    )
+    dcc.Graph(id='main-graph')
 ])
 
 @app.callback(
-    Output('interest-loan-graph', 'figure'),
-    Input('property-type-dropdown', 'value'),
+    Output('main-graph', 'figure'),
     Input('ltv-checklist', 'value'),
-    Input('additional-lines-checklist', 'value')
+    Input('addon-checklist', 'value'),
+    Input('return-series-radio', 'value')
 )
-def update_graph(selected_properties, selected_ltvs, additional_lines):
+def update_graph(ltvs, addons, return_series):
+    prop = "Apartment"
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    if not selected_properties or not selected_ltvs:
-        return go.Figure()
+    ordered_ltvs = ['LTV: 75%', 'LTV: 50%', 'LTV: 25%']
 
-    for prop_type in selected_properties:
-        # LTV lines with area fill
-        for ltv in selected_ltvs:
-            sub_df = melted[(melted['Property Type'] == prop_type) & (melted['LTV'] == ltv)]
-            line_color = get_line_color(prop_type)
-            fillcolor = fill_colors.get(prop_type, {}).get(ltv, 'rgba(200,200,200,0.2)')
-
+    # Plot LTV fills with opaque colors and solid lines
+    for ltv in ordered_ltvs:
+        if ltv in ltvs:
+            df_sub = melted[(melted['Property Type'] == prop) & (melted['LTV'] == ltv)]
             fig.add_trace(go.Scatter(
-                x=sub_df['Quarter'],
-                y=sub_df['Interest Rate'],
-                mode='lines',
-                fill='tonexty',
-                name=f"{prop_type} - {ltv}",
-                line=dict(color=line_color),
-                fillcolor=fillcolor,
-                hovertemplate='%{y:.2%} %{fullData.name}<extra></extra>'
+                x=df_sub['Quarter'], y=df_sub['Interest Rate'], mode='lines',
+                name=f"{prop} - {ltv}",
+                line=dict(color=base_colors[ltv], width=2),
+                fill='tozeroy',
+                fillcolor=base_colors[ltv]
             ), secondary_y=False)
 
-        # Add Structural Differences if selected
-    if 'structural_diff' in additional_lines:
+    # Structural Differences area and line
+    if 'gamma' in addons:
+        df_g = interest_df[interest_df['Property Type'] == prop]
         fig.add_trace(go.Scatter(
-            x=rf_df['Quarter'],
-            y=rf_df['Structural Differences'],
+            x=df_g['Quarter'], y=df_g['g'], name=f"{prop} Structural Diff.",
             mode='lines',
-            name="Structural Differences",
-            line=dict(color='purple', dash='dash'),
-            hovertemplate='%{y:.2%} Structural Differences<extra></extra>'
+            line=dict(color=gamma_color, width=2),
+            fill='tozeroy',
+            fillcolor=gamma_color
         ), secondary_y=False)
 
-        # Add Loan Volume if selected
-    if 'loan' in additional_lines:
-        loan_df = df[df['Property Type'].isin(selected_properties)]
-        for prop_type in selected_properties:
-            loan_sub_df = loan_df[loan_df['Property Type'] == prop_type]
-            loan_color = get_loan_color(prop_type)
+    # Loan volume on secondary y-axis
+    if 'loan' in addons:
+        df_l = interest_df[interest_df['Property Type'] == prop]
+        fig.add_trace(go.Scatter(
+            x=df_l['Quarter'], y=df_l['Loan Committed'] / 1e9,
+            name=f"{prop} Loan Volume",
+            line=dict(color=darken_color(gamma_color, 0.5), width=2)
+        ), secondary_y=True)
+
+    # Risk Free Rate area and line
+    if 'rf' in addons:
+        fig.add_trace(go.Scatter(
+            x=rf_df['Quarter'], y=rf_df['Rf'],
+            name='Risk-Free Rate',
+            mode='lines',
+            line=dict(color=rf_color, width=2),
+            fill='tozeroy',
+            fillcolor=rf_color
+        ), secondary_y=False)
+
+    # Add return/leading/lagging line on top if selected (and not "None")
+    if return_series and return_series != "None":
+        return_col = "Apt Total Returns"
+        x_vals, y_vals = [], []
+        for _, row in returns_df.iterrows():
+            x_date = row[return_series]
+            y_val = row.get(return_col)
+            if pd.notna(x_date) and pd.notna(y_val):
+                x_vals.append(x_date)
+                y_vals.append(y_val)
+        if x_vals:
             fig.add_trace(go.Scatter(
-                x=loan_sub_df['Quarter'],
-                y=[val / 1e9 for val in loan_sub_df['Loan Committed']],
+                x=x_vals, y=y_vals,
                 mode='lines',
-                name=f'{prop_type} Loan Volume',
-                line=dict(color=loan_color, width=2),
-                hovertemplate='$%{y:.2f}B<br>%{fullData.name}<extra></extra>'
-            ), secondary_y=True)
+                name=f"{prop} - {return_series}",
+                line=dict(color='red', width=2),
+                fill=None
+            ), secondary_y=False)
 
-    # Add Risk-Free Rate if selected (once)
-    if 'rf' in additional_lines:
-        fig.add_trace(go.Scatter(
-            x=rf_df['Quarter'],
-            y=rf_df['Rf'],
-            mode='lines',
-            name='Risk-Free Rate (Rf)',
-            line=dict(color='black', dash='dot'),
-            hovertemplate='%{y:.2%} %{fullData.name}<extra></extra>'
-        ), secondary_y=False)
-
-    # Add thick vertical lines for each recession quarter
-    recession_quarters = recession_df[recession_df['USREC'] == 1]['observation_date']
-    for rec_qtr in recession_quarters:
+    # Recession vertical lines
+    for rec_qtr in recession_df[recession_df['USREC'] == 1]['observation_date']:
         fig.add_shape(
-            type="line",
-            x0=rec_qtr, x1=rec_qtr,
-            y0=0, y1=1,
-            xref='x',
-            yref='paper',
-            line=dict(
-                color='rgba(128,128,128,0.6)',
-                width=6,
-                dash='solid'
-            ),
-            layer='below'
-        )
+            type='line', x0=rec_qtr, x1=rec_qtr, y0=0, y1=1,
+            xref='x', yref='paper', line=dict(color='gray', width=5), layer='below')
 
     fig.update_layout(
-        title="Quarterly Estimates of Annual Interest Rates at Various Leverage Ratios for the Years 1996 through 1Q 2025",
-        yaxis_title='Estimated Annual Interest Rate Expense',
-        legend_title='Legend',
-        template='plotly_white',
-        hovermode='x unified',
-        height=600,
-        xaxis=dict(showgrid=False),
-        yaxis=dict(showgrid=False),
-        yaxis2=dict(showgrid=False),
+        # Title removed as requested
+        yaxis_title="Interest Rate / Return", yaxis2_title="Loan Volume (Billion USD)",
+        template="plotly_white", height=650, hovermode="x unified",
+        hoverlabel=dict(
+            namelength=50,  # increase max chars shown for trace names
+            font=dict(size=13),
+            bgcolor="white",
+            bordercolor="black"
+        )
     )
 
-    fig.update_yaxes(
-        title_text='Estimated Annual Interest Rate Expense',
-        tickformat='.0%',
-        secondary_y=False
-    )
+    fig.update_yaxes(tickformat=".0%", secondary_y=False)
 
-    fig.update_yaxes(
-        title_text='Quarterly Loan Volume (Commitments) in USD Billions',
-        secondary_y=True
-    )
+    # Align secondary y-axis 0 with primary y-axis 0
+    primary_y_vals = []
+    secondary_y_vals = []
+
+    for trace in fig.data:
+        if not hasattr(trace, 'y') or trace.y is None:
+            continue
+        if getattr(trace, 'yaxis', 'y') == 'y2':
+            secondary_y_vals.extend([y for y in trace.y if y is not None])
+        else:
+            primary_y_vals.extend([y for y in trace.y if y is not None])
+
+    if primary_y_vals and secondary_y_vals:
+        y1_min, y1_max = min(primary_y_vals), max(primary_y_vals)
+        y2_max = max(secondary_y_vals)
+        zero_ratio = abs(y1_min) / (y1_max - y1_min) if y1_min < 0 else 0
+        y2_min = y2_max * -zero_ratio / (1 - zero_ratio) if zero_ratio < 1 else 0
+        fig.update_yaxes(range=[y1_min, y1_max], secondary_y=False)
+        fig.update_yaxes(range=[y2_min, y2_max], secondary_y=True)
 
     return fig
 
 if __name__ == '__main__':
-    import os
-    port = int(os.environ.get("PORT", 8050))  # Get port from environment variable, fallback 8050
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(debug=True)
